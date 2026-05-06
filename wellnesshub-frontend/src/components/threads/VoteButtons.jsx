@@ -39,7 +39,7 @@ export default function VoteButtons({
   const [error, setError] = useState('')
 
   const lastHydratedRef = useRef({
-    votableId: votableId,
+    votableId,
     count: safeInitialCount,
     userVote: safeInitialUserVote,
   })
@@ -78,7 +78,7 @@ export default function VoteButtons({
     const nextUserVote = getNextUserVote(userVote, value)
     const delta = (nextUserVote ?? 0) - (userVote ?? 0)
 
-    // Optimistic update
+    // Optimistic update. The API response is applied as the final source of truth.
     setCount((current) => current + delta)
     setUserVote(nextUserVote)
 

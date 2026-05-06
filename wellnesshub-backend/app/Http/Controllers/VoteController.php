@@ -9,7 +9,6 @@ use App\Models\Vote;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class VoteController extends Controller
 {
@@ -39,7 +38,8 @@ class VoteController extends Controller
             'tbl_vote_votable_id' => (int) $votable->getKey(),
             'tbl_vote_votable_type' => $class,
         ];
-        $requestedValue = (int) $data['value']; // 1 (upvote) or -1 (downvote)
+        // Vote value convention: 1 = upvote, -1 = downvote.
+        $requestedValue = (int) $data['value'];
 
         [$currentUserVote, $stats, $message] = DB::transaction(function () use (
             $attributes,
@@ -51,16 +51,6 @@ class VoteController extends Controller
                 ->where($attributes)
                 ->lockForUpdate()
                 ->first();
-
-            if (config('app.debug')) {
-                Log::debug('Vote action', [
-                    'votable_type' => $attributes['tbl_vote_votable_type'],
-                    'votable_id' => $attributes['tbl_vote_votable_id'],
-                    'user_id' => $attributes['tbl_vote_user_id'],
-                    'requested_value' => $requestedValue,
-                    'existing_value' => $existingVote?->tbl_vote_value,
-                ]);
-            }
 
             $currentUserVote = null;
             $message = 'Vote recorded successfully.';
@@ -75,12 +65,12 @@ class VoteController extends Controller
                 $existingValue = (int) $existingVote->tbl_vote_value;
 
                 if ($existingValue === $requestedValue) {
-                    // Same vote clicked twice -> remove vote
+                    // Clicking the same vote twice toggles it off.
                     $existingVote->delete();
                     $currentUserVote = null;
                     $message = 'Vote removed successfully.';
                 } else {
-                    // Opposite vote clicked -> switch immediately
+                    // Clicking the opposite vote switches immediately.
                     $existingVote->update([
                         'tbl_vote_value' => $requestedValue,
                     ]);
@@ -90,15 +80,6 @@ class VoteController extends Controller
             }
 
             $stats = $this->syncAndGetVotableVoteStats($class, (int) $votable->getKey());
-
-            if (config('app.debug')) {
-                Log::debug('Vote result', [
-                    'current_user_vote' => $currentUserVote,
-                    'votes_count' => $stats['votes_count'],
-                    'upvotes_count' => $stats['upvotes_count'],
-                    'downvotes_count' => $stats['downvotes_count'],
-                ]);
-            }
 
             return [$currentUserVote, $stats, $message];
         });

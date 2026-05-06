@@ -31,7 +31,7 @@ class ThreadController extends Controller
             $protocolIdInt = (int) $protocolId;
         }
 
-        // If Typesense is configured and a search term is provided, use it for search+sort.
+        // If Typesense is configured and a search term is provided, use it for search + sort.
         if (is_string($search) && $search !== '' && $typesense->clientConfigured()) {
             $result = $typesense->searchThreads($search, is_string($sort) ? $sort : null, $protocolIdInt);
             if ($result !== null) {
@@ -132,6 +132,7 @@ class ThreadController extends Controller
                 ->where('tbl_vote_votable_type', Thread::class)
                 ->where('tbl_vote_votable_id', (int) $thread->getKey())
                 ->value('tbl_vote_value');
+
             $thread->setAttribute('user_vote', $value !== null ? (int) $value : null);
             $thread->setAttribute('current_user_vote', $value !== null ? (int) $value : null);
         } else {
@@ -206,7 +207,8 @@ class ThreadController extends Controller
                 $at = strtotime((string) ($a->tbl_comment_created_at ?? '')) ?: 0;
                 $bt = strtotime((string) ($b->tbl_comment_created_at ?? '')) ?: 0;
 
-                return $bt <=> $at; // newest first
+                // Newest-first so fresh replies stay visible.
+                return $bt <=> $at;
             });
             $byParent[$pid] = $rows;
         }

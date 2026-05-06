@@ -31,31 +31,27 @@ export const formatDateTime = (date) => {
 
   const numericDate = Number(date)
 
+  const formatter = new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
   if (!Number.isNaN(numericDate)) {
     const timestamp =
       String(Math.trunc(numericDate)).length <= 10 ? numericDate * 1000 : numericDate
     const parsedNumeric = new Date(timestamp)
     if (!Number.isNaN(parsedNumeric.getTime())) {
-      return new Intl.DateTimeFormat('en', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      }).format(parsedNumeric)
+      return formatter.format(parsedNumeric)
     }
   }
 
   const parsed = new Date(date)
   if (Number.isNaN(parsed.getTime())) return ''
 
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(parsed)
+  return formatter.format(parsed)
 }
 
 export const excerpt = (text, length = 160) => {

@@ -45,7 +45,7 @@ export default function Navbar() {
 
   const openMobileMenu = () => {
     setIsMobileMenuMounted(true)
-    // Allow initial offscreen state to paint before sliding in.
+    // Allow initial off-screen state to paint before sliding in.
     requestAnimationFrame(() => setIsMobileMenuVisible(true))
   }
 
