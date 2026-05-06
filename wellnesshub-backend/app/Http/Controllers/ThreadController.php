@@ -6,6 +6,7 @@ use App\Http\Requests\StoreThreadRequest;
 use App\Http\Requests\UpdateThreadRequest;
 use App\Models\Comment;
 use App\Models\Thread;
+use App\Models\Vote;
 use App\Services\TypesenseService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,7 @@ class ThreadController extends Controller
 
     public function index(Request $request, TypesenseService $typesense): JsonResponse
     {
+        $userId = $request->user()?->getAuthIdentifier();
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
         $page = max((int) $request->query('page', 1), 1);
         $search = $request->query('search');
@@ -54,6 +56,8 @@ class ThreadController extends Controller
                     ->values()
                     ->all();
 
+                $this->attachThreadUserVotes($items, $userId ? (int) $userId : null);
+
                 return $this->successResponse([
                     'items' => $items,
                     'meta' => [
@@ -84,9 +88,12 @@ class ThreadController extends Controller
         };
 
         $paginator = $query->paginate($perPage);
+        $items = $paginator->items();
+
+        $this->attachThreadUserVotes($items, $userId ? (int) $userId : null);
 
         return $this->successResponse([
-            'items' => $paginator->items(),
+            'items' => $items,
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
@@ -116,13 +123,29 @@ class ThreadController extends Controller
 
     public function show(Thread $thread): JsonResponse
     {
+        $userId = request()->user()?->getAuthIdentifier();
         $thread->load(['protocol', 'author']);
+
+        if ($userId) {
+            $value = Vote::query()
+                ->where('tbl_vote_user_id', (int) $userId)
+                ->where('tbl_vote_votable_type', Thread::class)
+                ->where('tbl_vote_votable_id', (int) $thread->getKey())
+                ->value('tbl_vote_value');
+            $thread->setAttribute('user_vote', $value !== null ? (int) $value : null);
+            $thread->setAttribute('current_user_vote', $value !== null ? (int) $value : null);
+        } else {
+            $thread->setAttribute('user_vote', null);
+            $thread->setAttribute('current_user_vote', null);
+        }
 
         $flat = Comment::query()
             ->where('tbl_comment_thread_id', $thread->getKey())
             ->with('author')
             ->orderBy('tbl_comment_created_at')
             ->get();
+
+        $this->attachCommentUserVotes($flat, $userId ? (int) $userId : null);
 
         $tree = $this->buildCommentTree($flat);
 
@@ -191,5 +214,71 @@ class ThreadController extends Controller
         };
 
         return $build(0);
+    }
+
+    /**
+     * @param  array<int, Thread>  $threads
+     */
+    private function attachThreadUserVotes(array $threads, ?int $userId): void
+    {
+        if (! $userId || ! $threads) {
+            foreach ($threads as $thread) {
+                $thread->setAttribute('user_vote', null);
+                $thread->setAttribute('current_user_vote', null);
+            }
+
+            return;
+        }
+
+        $ids = collect($threads)->map(fn (Thread $t) => (int) $t->getKey())->filter()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $votes = Vote::query()
+            ->where('tbl_vote_user_id', $userId)
+            ->where('tbl_vote_votable_type', Thread::class)
+            ->whereIn('tbl_vote_votable_id', $ids->all())
+            ->pluck('tbl_vote_value', 'tbl_vote_votable_id');
+
+        foreach ($threads as $thread) {
+            $value = $votes->get((int) $thread->getKey());
+            $normalized = $value !== null ? (int) $value : null;
+            $thread->setAttribute('user_vote', $normalized);
+            $thread->setAttribute('current_user_vote', $normalized);
+        }
+    }
+
+    /**
+     * @param  Collection<int, Comment>  $comments
+     */
+    private function attachCommentUserVotes(Collection $comments, ?int $userId): void
+    {
+        if (! $userId || $comments->isEmpty()) {
+            foreach ($comments as $comment) {
+                $comment->setAttribute('user_vote', null);
+                $comment->setAttribute('current_user_vote', null);
+            }
+
+            return;
+        }
+
+        $ids = $comments->map(fn (Comment $c) => (int) $c->getKey())->filter()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $votes = Vote::query()
+            ->where('tbl_vote_user_id', $userId)
+            ->where('tbl_vote_votable_type', Comment::class)
+            ->whereIn('tbl_vote_votable_id', $ids->all())
+            ->pluck('tbl_vote_value', 'tbl_vote_votable_id');
+
+        foreach ($comments as $comment) {
+            $value = $votes->get((int) $comment->getKey());
+            $normalized = $value !== null ? (int) $value : null;
+            $comment->setAttribute('user_vote', $normalized);
+            $comment->setAttribute('current_user_vote', $normalized);
+        }
     }
 }

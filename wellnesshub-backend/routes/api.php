@@ -16,11 +16,13 @@ Route::post('auth/login', [AuthController::class, 'login']);
 Route::get('protocols', [ProtocolController::class, 'index']);
 Route::get('protocols/{protocol}', [ProtocolController::class, 'show']);
 
-Route::get('threads', [ThreadController::class, 'index']);
-Route::get('threads/{thread}', [ThreadController::class, 'show']);
+Route::middleware('optional.sanctum')->group(function (): void {
+    Route::get('threads', [ThreadController::class, 'index']);
+    Route::get('threads/{thread}', [ThreadController::class, 'show']);
 
-Route::get('comments', [CommentController::class, 'index']);
-Route::get('comments/{comment}', [CommentController::class, 'show']);
+    Route::get('comments', [CommentController::class, 'index']);
+    Route::get('comments/{comment}', [CommentController::class, 'show']);
+});
 
 Route::get('reviews', [ReviewController::class, 'index']);
 Route::get('reviews/{review}', [ReviewController::class, 'show']);

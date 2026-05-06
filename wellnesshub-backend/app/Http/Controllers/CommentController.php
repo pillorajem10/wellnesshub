@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCommentRequest;
 use App\Http\Requests\UpdateCommentRequest;
 use App\Models\Comment;
+use App\Models\Vote;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,7 @@ class CommentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $userId = $request->user()?->getAuthIdentifier();
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
         $threadId = $request->query('thread_id');
 
@@ -27,9 +29,12 @@ class CommentController extends Controller
         $query->orderByDesc('tbl_comment_created_at');
 
         $paginator = $query->paginate($perPage);
+        $items = $paginator->items();
+
+        $this->attachCommentUserVotes($items, $userId ? (int) $userId : null);
 
         return $this->successResponse([
-            'items' => $paginator->items(),
+            'items' => $items,
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
@@ -57,7 +62,21 @@ class CommentController extends Controller
 
     public function show(Comment $comment): JsonResponse
     {
+        $userId = request()->user()?->getAuthIdentifier();
         $comment->load(['author', 'thread', 'parent']);
+
+        if ($userId) {
+            $value = Vote::query()
+                ->where('tbl_vote_user_id', (int) $userId)
+                ->where('tbl_vote_votable_type', Comment::class)
+                ->where('tbl_vote_votable_id', (int) $comment->getKey())
+                ->value('tbl_vote_value');
+            $comment->setAttribute('user_vote', $value !== null ? (int) $value : null);
+            $comment->setAttribute('current_user_vote', $value !== null ? (int) $value : null);
+        } else {
+            $comment->setAttribute('user_vote', null);
+            $comment->setAttribute('current_user_vote', null);
+        }
 
         return $this->successResponse($comment);
     }
@@ -95,5 +114,38 @@ class CommentController extends Controller
         $comment->delete();
 
         return $this->successResponse(null, 'Comment deleted successfully.');
+    }
+
+    /**
+     * @param  array<int, Comment>  $comments
+     */
+    private function attachCommentUserVotes(array $comments, ?int $userId): void
+    {
+        if (! $userId || ! $comments) {
+            foreach ($comments as $comment) {
+                $comment->setAttribute('user_vote', null);
+                $comment->setAttribute('current_user_vote', null);
+            }
+
+            return;
+        }
+
+        $ids = collect($comments)->map(fn (Comment $c) => (int) $c->getKey())->filter()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $votes = Vote::query()
+            ->where('tbl_vote_user_id', $userId)
+            ->where('tbl_vote_votable_type', Comment::class)
+            ->whereIn('tbl_vote_votable_id', $ids->all())
+            ->pluck('tbl_vote_value', 'tbl_vote_votable_id');
+
+        foreach ($comments as $comment) {
+            $value = $votes->get((int) $comment->getKey());
+            $normalized = $value !== null ? (int) $value : null;
+            $comment->setAttribute('user_vote', $normalized);
+            $comment->setAttribute('current_user_vote', $normalized);
+        }
     }
 }

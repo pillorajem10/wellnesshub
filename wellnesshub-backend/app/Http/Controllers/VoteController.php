@@ -8,14 +8,13 @@ use App\Models\Thread;
 use App\Models\Vote;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class VoteController extends Controller
 {
     use ApiResponse;
 
-    /**
-     * Voting is treated as a toggle: voting again on the same item removes the user's previous vote.
-     */
     public function store(StoreVoteRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -40,40 +39,99 @@ class VoteController extends Controller
             'tbl_vote_votable_id' => (int) $votable->getKey(),
             'tbl_vote_votable_type' => $class,
         ];
-        $existingVote = Vote::query()->where($attributes)->first();
+        $requestedValue = (int) $data['value']; // 1 (upvote) or -1 (downvote)
 
-        if ($existingVote) {
-            $existingVote->delete();
-            $votesCount = $this->syncVotableVotesCount($class, (int) $votable->getKey());
+        [$currentUserVote, $stats, $message] = DB::transaction(function () use (
+            $attributes,
+            $requestedValue,
+            $class,
+            $votable
+        ): array {
+            $existingVote = Vote::query()
+                ->where($attributes)
+                ->lockForUpdate()
+                ->first();
 
-            return $this->successResponse([
-                'votable_type' => $data['votable_type'],
-                'votable_id' => $votable->getKey(),
-                'votes_count' => $votesCount,
-                'user_vote' => null,
-            ], 'Vote removed successfully.');
-        }
+            if (config('app.debug')) {
+                Log::debug('Vote action', [
+                    'votable_type' => $attributes['tbl_vote_votable_type'],
+                    'votable_id' => $attributes['tbl_vote_votable_id'],
+                    'user_id' => $attributes['tbl_vote_user_id'],
+                    'requested_value' => $requestedValue,
+                    'existing_value' => $existingVote?->tbl_vote_value,
+                ]);
+            }
 
-        Vote::query()->create($attributes + [
-            'tbl_vote_value' => (int) $data['value'],
-        ]);
+            $currentUserVote = null;
+            $message = 'Vote recorded successfully.';
 
-        $votesCount = $this->syncVotableVotesCount($class, (int) $votable->getKey());
+            if (! $existingVote) {
+                Vote::query()->create($attributes + [
+                    'tbl_vote_value' => $requestedValue,
+                ]);
+                $currentUserVote = $requestedValue;
+                $message = 'Vote recorded successfully.';
+            } else {
+                $existingValue = (int) $existingVote->tbl_vote_value;
+
+                if ($existingValue === $requestedValue) {
+                    // Same vote clicked twice -> remove vote
+                    $existingVote->delete();
+                    $currentUserVote = null;
+                    $message = 'Vote removed successfully.';
+                } else {
+                    // Opposite vote clicked -> switch immediately
+                    $existingVote->update([
+                        'tbl_vote_value' => $requestedValue,
+                    ]);
+                    $currentUserVote = $requestedValue;
+                    $message = 'Vote updated successfully.';
+                }
+            }
+
+            $stats = $this->syncAndGetVotableVoteStats($class, (int) $votable->getKey());
+
+            if (config('app.debug')) {
+                Log::debug('Vote result', [
+                    'current_user_vote' => $currentUserVote,
+                    'votes_count' => $stats['votes_count'],
+                    'upvotes_count' => $stats['upvotes_count'],
+                    'downvotes_count' => $stats['downvotes_count'],
+                ]);
+            }
+
+            return [$currentUserVote, $stats, $message];
+        });
 
         return $this->successResponse([
             'votable_type' => $data['votable_type'],
             'votable_id' => $votable->getKey(),
-            'votes_count' => $votesCount,
-            'user_vote' => (int) $data['value'],
-        ], 'Vote recorded successfully.');
+            'votes_count' => $stats['votes_count'],
+            'upvotes_count' => $stats['upvotes_count'],
+            'downvotes_count' => $stats['downvotes_count'],
+            'user_vote' => $currentUserVote,
+            'current_user_vote' => $currentUserVote,
+        ], $message);
     }
 
-    private function syncVotableVotesCount(string $votableClass, int $votableId): int
+    /**
+     * Recalculate vote stats and persist the net score to the votable row.
+     *
+     * @return array{votes_count:int, upvotes_count:int, downvotes_count:int}
+     */
+    private function syncAndGetVotableVoteStats(string $votableClass, int $votableId): array
     {
-        $votesCount = (int) Vote::query()
+        $row = Vote::query()
             ->where('tbl_vote_votable_type', $votableClass)
             ->where('tbl_vote_votable_id', $votableId)
-            ->sum('tbl_vote_value');
+            ->selectRaw('COALESCE(SUM(tbl_vote_value), 0) as score')
+            ->selectRaw('COALESCE(SUM(tbl_vote_value = 1), 0) as upvotes')
+            ->selectRaw('COALESCE(SUM(tbl_vote_value = -1), 0) as downvotes')
+            ->first();
+
+        $votesCount = (int) ($row->score ?? 0);
+        $upvotesCount = (int) ($row->upvotes ?? 0);
+        $downvotesCount = (int) ($row->downvotes ?? 0);
 
         if ($votableClass === Thread::class) {
             Thread::query()->where('tbl_thread_id', $votableId)->update([
@@ -85,6 +143,10 @@ class VoteController extends Controller
             ]);
         }
 
-        return $votesCount;
+        return [
+            'votes_count' => $votesCount,
+            'upvotes_count' => $upvotesCount,
+            'downvotes_count' => $downvotesCount,
+        ];
     }
 }
