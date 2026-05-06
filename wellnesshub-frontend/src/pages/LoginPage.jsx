@@ -12,8 +12,8 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
 
-  const [email, setEmail] = useState('demo@wellnesshub.test')
-  const [password, setPassword] = useState('user123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +33,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Welcome back" subtitle="Demo credentials: demo@wellnesshub.test / user123">
+    <AuthLayout title="Welcome back">
       <form className="space-y-4" onSubmit={handleSubmit}>
         <Input
           id="login-email"
