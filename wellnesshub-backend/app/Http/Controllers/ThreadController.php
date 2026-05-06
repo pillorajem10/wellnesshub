@@ -142,7 +142,7 @@ class ThreadController extends Controller
         $flat = Comment::query()
             ->where('tbl_comment_thread_id', $thread->getKey())
             ->with('author')
-            ->orderBy('tbl_comment_created_at')
+            ->orderByDesc('tbl_comment_created_at')
             ->get();
 
         $this->attachCommentUserVotes($flat, $userId ? (int) $userId : null);
@@ -199,6 +199,16 @@ class ThreadController extends Controller
         foreach ($comments as $comment) {
             $pid = (int) ($comment->tbl_comment_parent_id ?? 0);
             $byParent[$pid][] = $comment;
+        }
+
+        foreach ($byParent as $pid => $rows) {
+            usort($rows, function (Comment $a, Comment $b): int {
+                $at = strtotime((string) ($a->tbl_comment_created_at ?? '')) ?: 0;
+                $bt = strtotime((string) ($b->tbl_comment_created_at ?? '')) ?: 0;
+
+                return $bt <=> $at; // newest first
+            });
+            $byParent[$pid] = $rows;
         }
 
         $build = function (int $parentId) use (&$build, &$byParent): array {

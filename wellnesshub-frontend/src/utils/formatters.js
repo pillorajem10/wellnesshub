@@ -26,6 +26,38 @@ export const formatDate = (date) => {
   }).format(parsed)
 }
 
+export const formatDateTime = (date) => {
+  if (!date) return ''
+
+  const numericDate = Number(date)
+
+  if (!Number.isNaN(numericDate)) {
+    const timestamp =
+      String(Math.trunc(numericDate)).length <= 10 ? numericDate * 1000 : numericDate
+    const parsedNumeric = new Date(timestamp)
+    if (!Number.isNaN(parsedNumeric.getTime())) {
+      return new Intl.DateTimeFormat('en', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(parsedNumeric)
+    }
+  }
+
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return ''
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 export const excerpt = (text, length = 160) => {
   if (!text) return ''
   return text.length > length ? text.slice(0, length).trim() + '...' : text

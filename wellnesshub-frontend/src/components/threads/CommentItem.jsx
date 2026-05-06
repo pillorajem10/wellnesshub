@@ -3,6 +3,7 @@ import Button from '@/components/common/Button'
 import Card from '@/components/common/Card'
 import CommentForm from '@/components/threads/CommentForm'
 import VoteButtons from '@/components/threads/VoteButtons'
+import { formatDateTime } from '@/utils/formatters'
 
 function getCommentIndentClass(depth) {
   if (depth <= 1) return ''
@@ -27,7 +28,13 @@ export default function CommentItem({ comment, onReply, canReply, isAuthenticate
   return (
     <div className={getCommentIndentClass(cappedDepth)}>
       <Card className={cardClassName}>
-        <p className="text-sm font-medium text-slate-900">{comment.author.fullName}</p>
+        <p className="text-sm font-medium text-slate-900">
+          {comment.author.fullName}
+          <span className="font-normal text-slate-500">
+            {' '}
+            · {formatDateTime(comment.createdAt)}
+          </span>
+        </p>
         <p className="mt-1 text-sm text-slate-700">{comment.body}</p>
         <div className="mt-2">
           <VoteButtons
