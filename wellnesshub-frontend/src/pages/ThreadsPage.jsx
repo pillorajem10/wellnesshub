@@ -54,11 +54,12 @@ export default function ThreadsPage() {
 
       if (isSearching) {
         // Search currently returns a single result set, so infinite scroll is disabled while searching.
-        response = await searchService.searchThreads(searchQuery)
+        response = await searchService.searchThreads(searchQuery, sort)
       } else {
         response = await threadService.getThreads({
-          per_page: 10,
+          per_page: 9,
           page,
+          sort,
         })
       }
 

@@ -49,30 +49,32 @@ export default function ProtocolsPage() {
 
   const loadProtocols = useCallback(async () => {
     const nextLoadingState = page === 1 ? setLoading : setLoadingMore
+  
     nextLoadingState(true)
     setError('')
-
+  
     try {
       let response
-
+  
       if (isSearching) {
-        // Search currently returns a single result set, so infinite scroll is disabled while searching.
-        response = await searchService.searchProtocols(searchQuery)
+        // Search uses Typesense and should still respect the selected sort option.
+        response = await searchService.searchProtocols(searchQuery, sort)
       } else {
         response = await protocolService.getProtocols({
-          sort,
           per_page: 9,
           page,
+          sort,
         })
       }
-
+  
       const normalizedItems = unwrapList(response).map(normalizeProtocol)
-
+  
       setProtocols((previous) => {
         if (page === 1) return normalizedItems
+  
         return mergeUniqueById(previous, normalizedItems)
       })
-
+  
       if (isSearching) {
         setPagination({
           currentPage: 1,
