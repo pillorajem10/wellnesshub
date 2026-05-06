@@ -85,6 +85,96 @@ php artisan serve
 
 By default the API will run at `http://localhost:8000`.
 
+### Typesense Setup, SSL Certificate, and Reindexing
+
+The backend supports Typesense (cloud) for search. Typesense settings live in `wellnesshub-backend/.env` (copied from `.env.example`).
+
+#### Typesense SSL Certificate Setup for XAMPP / Windows
+
+If you’re using **Typesense Cloud over HTTPS** from a local **Windows + XAMPP** setup, PHP (Guzzle/cURL) may fail with:
+
+- `cURL error 60: SSL certificate problem: unable to get local issuer certificate`
+
+This usually happens because your local PHP doesn’t know where to find a trusted **CA certificate bundle**. The fix is to download a CA bundle and point PHP to it in `php.ini`.
+
+Do **not** disable SSL verification — it’s unsafe and not recommended.
+
+1. Download the latest CA bundle:
+   - `https://curl.se/ca/cacert.pem`
+
+2. Save it in a local XAMPP PHP folder, for example:
+   - `C:/xampp/php/extras/ssl/cacert.pem`
+
+3. Check the active PHP configuration file:
+
+```bash
+php --ini
+```
+
+4. Open the active `php.ini` file (usually):
+   - `C:/xampp/php/php.ini`
+
+5. Add or update these lines:
+
+```ini
+curl.cainfo="C:/xampp/php/extras/ssl/cacert.pem"
+openssl.cafile="C:/xampp/php/extras/ssl/cacert.pem"
+```
+
+6. Restart Apache from XAMPP and reopen the terminal.
+
+7. Clear Laravel config/cache:
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+```
+
+8. Test Typesense search or run the reindex flow again.
+
+If this step is skipped, the app may still run, but **Typesense search/reindexing may fail locally** because Laravel cannot verify the SSL certificate from Typesense Cloud.
+
+#### Reindexing Typesense
+
+After setting up the database, seeders, and your Typesense collections, you can reindex searchable data using either the CLI command or the API route.
+
+**Option 1: Reindex using Artisan command (recommended locally)**
+
+```bash
+php artisan typesense:reindex
+```
+
+- Recommended for local development
+- Avoids browser/API timeout issues for larger data sets
+
+**Option 2: Reindex using API route**
+
+Endpoint:
+- `POST http://127.0.0.1:8000/api/typesense/reindex`
+
+Headers:
+- `Accept: application/json`
+- `Content-Type: application/json`
+- `Authorization: Bearer YOUR_AUTH_TOKEN`
+
+Example `curl`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/typesense/reindex" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+```
+
+- Use a valid Laravel/Sanctum Bearer token from a logged-in user
+- Do **not** use the Typesense API key as the Bearer token
+- The Typesense API key stays in `wellnesshub-backend/.env`
+- The API route is useful for manually triggering reindexing from an authenticated request
+
+After successful reindexing:
+- Protocols and threads from the database should appear in the Typesense collections
+- Search results should return `"source": "typesense"` (when the response includes a `source` field)
+
 ## Frontend (React / Vite + TailwindCSS) setup
 
 ### 1) Install frontend dependencies
@@ -141,18 +231,10 @@ npm run dev
 
 ## Typesense (search)
 
-The backend `.env.example` includes Typesense settings:
-
-- `TYPESENSE_HOST`
-- `TYPESENSE_PORT`
-- `TYPESENSE_PROTOCOL`
-- `TYPESENSE_API_KEY`
-- `TYPESENSE_SEARCH_ONLY_API_KEY`
-- `TYPESENSE_COLLECTION_PROTOCOLS`
+Typesense settings are configured in `wellnesshub-backend/.env` (copy from `.env.example`).
 
 If search isn’t returning results:
-
-- Confirm these values are set correctly in `wellnesshub-backend/.env`
+- Confirm the Typesense environment variables are set correctly in `wellnesshub-backend/.env`
 - Ensure the Typesense collection referenced by the app exists and is populated
-- If you are using your own Typesense project, replace the API keys with your own (avoid committing secrets)
+- If you’re using Typesense Cloud on Windows/XAMPP, complete the SSL certificate setup above
 
