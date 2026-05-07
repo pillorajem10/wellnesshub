@@ -7,7 +7,7 @@ import VoteButtons from '@/components/threads/VoteButtons'
 import { useAuth } from '@/hooks/useAuth'
 import { excerpt, formatDate } from '@/utils/formatters'
 
-export default function ThreadCard({ thread }) {
+export default function ThreadCard({ thread, onThreadUpdated }) {
   const { isAuthenticated } = useAuth()
   const [votesCount, setVotesCount] = useState(thread.votesCount)
   const [userVote, setUserVote] = useState(thread.userVote)
@@ -47,6 +47,12 @@ export default function ThreadCard({ thread }) {
               onVoted={({ votesCount: nextVotesCount, userVote: nextUserVote }) => {
                 setVotesCount(nextVotesCount)
                 setUserVote(nextUserVote)
+                if (onThreadUpdated) {
+                  onThreadUpdated(thread.id, {
+                    votesCount: nextVotesCount,
+                    userVote: nextUserVote,
+                  })
+                }
               }}
             />
           </div>

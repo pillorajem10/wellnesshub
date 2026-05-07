@@ -6,6 +6,7 @@ import Input from '@/components/common/Input'
 import LoadingSpinner from '@/components/common/LoadingSpinner'
 import Card from '@/components/common/Card'
 import ThreadCard from '@/components/threads/ThreadCard'
+import ThreadFilters from '@/components/threads/ThreadFilters'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { threadService } from '@/services/threadService'
@@ -26,6 +27,7 @@ export default function ThreadsPage() {
   const [searchInput, setSearchInput] = useState('')
   const debouncedSearch = useDebouncedValue(searchInput, 350)
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState('recent')
   const [pagination, setPagination] = useState({
     currentPage: 1,
     lastPage: 1,
@@ -85,7 +87,7 @@ export default function ThreadsPage() {
     } finally {
       nextLoadingState(false)
     }
-  }, [isSearching, page, searchQuery])
+  }, [isSearching, page, searchQuery, sort])
 
   useEffect(() => {
     loadThreads()
@@ -99,6 +101,12 @@ export default function ThreadsPage() {
 
   const handleSearchChange = (value) => {
     setSearchInput(value)
+  }
+
+  const handleSortChange = (value) => {
+    setSort(value)
+    setThreads([])
+    setPage(1)
   }
 
   useEffect(() => {
@@ -116,12 +124,11 @@ export default function ThreadsPage() {
       </section>
 
       <Card className="p-4">
-        <Input
-          id="thread-search"
-          label="Search threads"
-          value={searchInput}
-          onChange={(event) => handleSearchChange(event.target.value)}
-          placeholder='Try "sleep" or "routine"'
+        <ThreadFilters
+          search={searchInput}
+          sort={sort}
+          onSearchChange={handleSearchChange}
+          onSortChange={handleSortChange}
         />
       </Card>
 
@@ -139,7 +146,15 @@ export default function ThreadsPage() {
       {!loading && !error && threads.length ? (
         <div className="space-y-4">
           {threads.map((thread) => (
-            <ThreadCard key={thread.id} thread={thread} />
+            <ThreadCard
+              key={thread.id}
+              thread={thread}
+              onThreadUpdated={(threadId, patch) => {
+                setThreads((current) =>
+                  current.map((item) => (item.id === threadId ? { ...item, ...patch } : item))
+                )
+              }}
+            />
           ))}
         </div>
       ) : null}

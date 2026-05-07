@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCommentRequest;
 use App\Http\Requests\UpdateCommentRequest;
 use App\Models\Comment;
+use App\Models\Thread;
 use App\Models\Vote;
+use App\Services\TypesenseService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,7 +46,7 @@ class CommentController extends Controller
         ]);
     }
 
-    public function store(StoreCommentRequest $request): JsonResponse
+    public function store(StoreCommentRequest $request, TypesenseService $typesense): JsonResponse
     {
         $data = $request->validated();
 
@@ -56,6 +58,15 @@ class CommentController extends Controller
         ]);
 
         $comment->load('author');
+
+        // Ensure thread comment counts are reflected in Typesense search results.
+        if ($typesense->clientConfigured()) {
+            $thread = Thread::query()->with('author')->find((int) $data['thread_id']);
+            if ($thread) {
+                $thread->refresh();
+                $typesense->indexThread($thread);
+            }
+        }
 
         return $this->successResponse($comment, 'Comment created successfully.', 201);
     }
@@ -105,13 +116,23 @@ class CommentController extends Controller
         return $this->successResponse($comment, 'Comment updated successfully.');
     }
 
-    public function destroy(Request $request, Comment $comment): JsonResponse
+    public function destroy(Request $request, Comment $comment, TypesenseService $typesense): JsonResponse
     {
         if ((int) $comment->tbl_comment_author_id !== (int) $request->user()->getAuthIdentifier()) {
             return $this->errorResponse('Unauthorized action.', [], 403);
         }
 
+        $threadId = (int) $comment->tbl_comment_thread_id;
         $comment->delete();
+
+        // Ensure thread comment counts are reflected in Typesense search results.
+        if ($typesense->clientConfigured()) {
+            $thread = Thread::query()->with('author')->find($threadId);
+            if ($thread) {
+                $thread->refresh();
+                $typesense->indexThread($thread);
+            }
+        }
 
         return $this->successResponse(null, 'Comment deleted successfully.');
     }

@@ -271,9 +271,10 @@ class TypesenseService
     {
         return match ($sort) {
             // Threads are not "rated"; use engagement proxies for search sorting.
-            'highest_rated' => 'votes_count:desc',
-            'most_reviewed' => 'comments_count:desc',
+            'most_reviewed', 'most_commented' => 'comments_count:desc',
             'most_upvoted' => 'votes_count:desc',
+            // Keep this for backward compatibility (if any client sends it).
+            'highest_rated' => 'votes_count:desc',
             'recent' => 'created_at:desc',
             default => 'created_at:desc',
         };

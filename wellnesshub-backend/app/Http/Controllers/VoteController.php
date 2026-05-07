@@ -6,6 +6,7 @@ use App\Http\Requests\StoreVoteRequest;
 use App\Models\Comment;
 use App\Models\Thread;
 use App\Models\Vote;
+use App\Services\TypesenseService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +15,7 @@ class VoteController extends Controller
 {
     use ApiResponse;
 
-    public function store(StoreVoteRequest $request): JsonResponse
+    public function store(StoreVoteRequest $request, TypesenseService $typesense): JsonResponse
     {
         $data = $request->validated();
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -83,6 +84,15 @@ class VoteController extends Controller
 
             return [$currentUserVote, $stats, $message];
         });
+
+        // Keep Typesense counts in sync for future searches (query-level updates bypass Thread observers).
+        if ($typesense->clientConfigured() && $class === Thread::class) {
+            $thread = Thread::query()->with('author')->find((int) $votable->getKey());
+            if ($thread) {
+                $thread->refresh();
+                $typesense->indexThread($thread);
+            }
+        }
 
         return $this->successResponse([
             'votable_type' => $data['votable_type'],

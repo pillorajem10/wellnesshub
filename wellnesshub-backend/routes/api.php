@@ -22,13 +22,14 @@ Route::middleware('optional.sanctum')->group(function (): void {
 
     Route::get('comments', [CommentController::class, 'index']);
     Route::get('comments/{comment}', [CommentController::class, 'show']);
+
+    // Search endpoints also benefit from optional auth so we can hydrate user-specific vote state.
+    Route::get('search/protocols', [SearchController::class, 'protocols']);
+    Route::get('search/threads', [SearchController::class, 'threads']);
 });
 
 Route::get('reviews', [ReviewController::class, 'index']);
 Route::get('reviews/{review}', [ReviewController::class, 'show']);
-
-Route::get('search/protocols', [SearchController::class, 'protocols']);
-Route::get('search/threads', [SearchController::class, 'threads']);
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout']);

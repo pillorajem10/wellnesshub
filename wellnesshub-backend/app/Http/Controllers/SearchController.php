@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Protocol;
 use App\Models\Thread;
+use App\Models\Vote;
 use App\Services\TypesenseService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -39,26 +40,43 @@ class SearchController extends Controller
 
     public function threads(Request $request, TypesenseService $typesense): JsonResponse
     {
+        $userId = $request->user()?->getAuthIdentifier();
         $query = (string) $request->query('q', '');
         $sort = $request->query('sort');
 
         if ($typesense->clientConfigured()) {
             $result = $typesense->searchThreads($query, is_string($sort) ? $sort : null);
             if ($result !== null) {
-                $documents = collect($result['hits'] ?? [])
-                    ->map(fn (array $hit) => $hit['document'] ?? $hit)
+                $ids = collect($result['hits'] ?? [])
+                    ->map(fn (array $hit) => (int) (($hit['document']['id'] ?? $hit['id'] ?? null)))
+                    ->filter()
+                    ->values();
+
+                $rows = Thread::query()
+                    ->with('author')
+                    ->whereIn('tbl_thread_id', $ids->all())
+                    ->get()
+                    ->keyBy('tbl_thread_id');
+
+                $items = $ids
+                    ->map(fn (int $id) => $rows->get($id))
+                    ->filter()
                     ->values()
                     ->all();
 
+                $this->attachThreadUserVotes($items, $userId ? (int) $userId : null);
+
                 return $this->successResponse([
                     'found' => $result['found'] ?? 0,
-                    'hits' => $documents,
+                    'hits' => $items,
                     'source' => 'typesense',
                 ]);
             }
         }
 
-        return $this->successResponse($this->fallbackThreadSearch($query, is_string($sort) ? $sort : null));
+        return $this->successResponse(
+            $this->fallbackThreadSearch($query, is_string($sort) ? $sort : null, $userId ? (int) $userId : null)
+        );
     }
 
     /**
@@ -110,7 +128,7 @@ class SearchController extends Controller
     /**
      * @return array{found: int, hits: list<array<string, mixed>>, source: string}
      */
-    private function fallbackThreadSearch(string $query, ?string $sort): array
+    private function fallbackThreadSearch(string $query, ?string $sort, ?int $userId): array
     {
         $q = Thread::query()->with('author');
 
@@ -129,26 +147,47 @@ class SearchController extends Controller
             default => $q->orderByDesc('tbl_thread_created_at'),
         };
 
-        $rows = $q->limit(50)->get();
+        $rows = $q->limit(50)->get()->all();
 
-        $hits = $rows->map(function (Thread $thread) {
-            return [
-                'id' => (string) $thread->getKey(),
-                'protocol_id' => (string) $thread->tbl_thread_protocol_id,
-                'title' => $thread->tbl_thread_title,
-                'body' => $thread->tbl_thread_body,
-                'tags' => $thread->tbl_thread_tags ?? [],
-                'author' => $thread->author?->displayName() ?? '',
-                'votes_count' => (int) $thread->tbl_thread_votes_count,
-                'comments_count' => (int) $thread->tbl_thread_comments_count,
-                'created_at' => $thread->tbl_thread_created_at?->getTimestamp() ?? 0,
-            ];
-        })->all();
+        $this->attachThreadUserVotes($rows, $userId);
 
         return [
-            'found' => count($hits),
-            'hits' => $hits,
+            'found' => count($rows),
+            'hits' => $rows,
             'source' => 'database',
         ];
+    }
+
+    /**
+     * @param  array<int, Thread>  $threads
+     */
+    private function attachThreadUserVotes(array $threads, ?int $userId): void
+    {
+        if (! $userId || ! $threads) {
+            foreach ($threads as $thread) {
+                $thread->setAttribute('user_vote', null);
+                $thread->setAttribute('current_user_vote', null);
+            }
+
+            return;
+        }
+
+        $ids = collect($threads)->map(fn (Thread $t) => (int) $t->getKey())->filter()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $votes = Vote::query()
+            ->where('tbl_vote_user_id', $userId)
+            ->where('tbl_vote_votable_type', Thread::class)
+            ->whereIn('tbl_vote_votable_id', $ids->all())
+            ->pluck('tbl_vote_value', 'tbl_vote_votable_id');
+
+        foreach ($threads as $thread) {
+            $value = $votes->get((int) $thread->getKey());
+            $normalized = $value !== null ? (int) $value : null;
+            $thread->setAttribute('user_vote', $normalized);
+            $thread->setAttribute('current_user_vote', $normalized);
+        }
     }
 }

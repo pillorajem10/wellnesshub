@@ -82,6 +82,7 @@ class ThreadController extends Controller
         }
 
         match ($sort) {
+            'most_reviewed' => $query->orderByDesc('tbl_thread_comments_count'),
             'most_upvoted' => $query->orderByDesc('tbl_thread_votes_count'),
             'most_commented' => $query->orderByDesc('tbl_thread_comments_count'),
             default => $query->orderByDesc('tbl_thread_created_at'),
